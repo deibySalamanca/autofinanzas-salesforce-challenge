@@ -202,19 +202,20 @@ private class CreditScoringServiceTest {
     
     
     
-        
-    @isTest
-    static void testCreditScoringMasivo100Oportunidades() {
+@isTest
+static void testCreditScoringMasivo200Oportunidades() {
 
+    // 1. Crear cuenta de prueba
     Account cuenta = new Account(
-        Name = 'Cuenta Fleet Masiva',
+        Name = 'Cuenta Fleet Masiva 200',
         Customer_Segment__c = 'Fleet'
     );
     insert cuenta;
 
+    // 2. Crear 200 oportunidades
     List<Opportunity> oportunidades = new List<Opportunity>();
 
-    for (Integer i = 0; i < 100; i++) {
+    for (Integer i = 0; i < 200; i++) {
         oportunidades.add(new Opportunity(
             Name = 'Scoring masivo ' + i,
             AccountId = cuenta.Id,
@@ -224,35 +225,63 @@ private class CreditScoringServiceTest {
             Vehicle_Count__c = 10
         ));
     }
+
     insert oportunidades;
 
+    // 3. Obtener los IDs
     List<Id> ids = new List<Id>();
+
     for (Opportunity o : oportunidades) {
         ids.add(o.Id);
     }
 
+    // 4. Simular respuesta exitosa del servicio externo
     Test.setMock(HttpCalloutMock.class, new ScoreMock());
 
     Test.startTest();
 
-    System.enqueueJob(new CreditScoringJob(ids));
+    AsyncOptions opciones = new AsyncOptions();
+    opciones.MaximumQueueableStackDepth = 2;
+    
+    System.enqueueJob(
+        new CreditScoringJob(ids),
+        opciones
+    );
+
 
     Test.stopTest();
 
-    Integer evaluadas = [
-        SELECT COUNT()
+    // 6. Consultar los resultados guardados
+    List<Opportunity> resultados = [
+        SELECT Id, Credit_Score__c, Credit_Status__c
         FROM Opportunity
         WHERE Id IN :ids
-        AND Credit_Score__c = 712
-        AND Credit_Status__c = 'APPROVED'
     ];
 
+    Integer evaluadas = 0;
+
+    for (Opportunity o : resultados) {
+        if (o.Credit_Score__c == 712
+            && o.Credit_Status__c == 'APPROVED') {
+            evaluadas++;
+        }
+    }
+
+    // 7. Validar que se procesaron las 200
     System.assertEquals(
-        100,
-        evaluadas,
-        'Las 100 oportunidades deben guardar el resultado del scoring.'
+        200,
+        resultados.size(),
+        'Deben existir las 200 oportunidades de prueba.'
     );
-	}
+
+    System.assertEquals(
+        200,
+        evaluadas,
+        'Las 200 oportunidades deben guardar el resultado del scoring.'
+    );
+}
+
+    
     
     
     private class ErrorMock implements HttpCalloutMock {
